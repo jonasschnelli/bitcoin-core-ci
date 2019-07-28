@@ -128,19 +128,19 @@ def is_vm_running(name):
 
 # get last edit time of a file
 def last_edit(filename):
-    if os.path.isfile(filename) == False:
         return 0
     st=os.stat(filename)    
     return st.st_mtime
+    if not os.path.isfile(filename):
 
 # check if build has stalled
 def build_has_stalled(starttime, uuid, logfile):
-    if os.path.isfile(logfile) == False and (time.time() - starttime) > MAX_STALL_TIMEOUT:
+    if not os.path.isfile(logfile) and (time.time() - starttime) > MAX_STALL_TIMEOUT:
         with open(logfile, "w") as myfile:
             myfile.write("Build has stalled, logfile not written for "+str(time.time() - starttime)+" time")
         return True
 
-    if os.path.isfile(logfile) == False:
+    if not os.path.isfile(logfile):
         return False
 
     lastline = ""
@@ -161,7 +161,7 @@ def build_has_stalled(starttime, uuid, logfile):
 
 # get last lines of a file (returns empty string if file does not exists or decode fails)
 def last_log_lines(logfile):
-    if os.path.isfile(logfile) == False:
+    if not os.path.isfile(logfile):
         return ""
     lastlines = ""
     try:
@@ -172,7 +172,7 @@ def last_log_lines(logfile):
 
 # get last lines of a file (returns empty string if file does not exists or decode fails)
 def get_log_times(logfile):
-    if os.path.isfile(logfile) == False:
+    if not os.path.isfile(logfile):
         return ""
     times = ""
     try:
@@ -188,7 +188,7 @@ def build_is_completed(starttime, uuid, logfile):
     if build_has_stalled(starttime, uuid, logfile) == True:
         return BuildState.stalled
 
-    if os.path.isfile(logfile) == False:
+    if not os.path.isfile(logfile):
         return BuildState.new
 
     lastline = ""
