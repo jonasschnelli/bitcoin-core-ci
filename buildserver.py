@@ -9,6 +9,7 @@ import subprocess
 import os
 import threading
 from threading import Thread
+from typing import Any
 from enum import IntEnum 
 
 SQLLITE_DB        = "builds.sqlite"
@@ -39,7 +40,7 @@ sql_con.commit()
 sql_con.set_trace_callback(print)
 
 # create a job in the database
-def sql_create_job(conn, project):
+def sql_create_job(conn, project) -> Any:
     sql = ''' INSERT INTO jobs(to_build, uuid, name, starttime, endtime, baseimage, shellscript)
               VALUES(?,?,?,?,?,?,?) '''
     cur = conn.cursor()
@@ -118,23 +119,19 @@ def process_builds(conn):
 
 # check if vm is running (via shall script)
 # TODO: currently unused, we completely trust the database
-def is_vm_running(name):
+def is_vm_running(name) -> bool:
     proc = subprocess.Popen([os.path.join(SCRIPT_DIR, "is_vm_running.sh"), name])
     stdout = proc.communicate()[0]
-    rc = proc.returncode
-    if rc == 0:
-        return True
-    return False
+    return True if proc.returncode is 0 else False
 
 # get last edit time of a file
-def last_edit(filename):
-        return 0
-    st=os.stat(filename)    
-    return st.st_mtime
+def last_edit(filename: str) -> float:
     if not os.path.isfile(filename):
+        return 0  
+    return os.stat(filename).st_mtime
 
 # check if build has stalled
-def build_has_stalled(starttime, uuid, logfile):
+def build_has_stalled(starttime, uuid, logfile: str) -> bool:
     if not os.path.isfile(logfile) and (time.time() - starttime) > MAX_STALL_TIMEOUT:
         with open(logfile, "w") as myfile:
             myfile.write("Build has stalled, logfile not written for "+str(time.time() - starttime)+" time")
@@ -160,7 +157,7 @@ def build_has_stalled(starttime, uuid, logfile):
     return False
 
 # get last lines of a file (returns empty string if file does not exists or decode fails)
-def last_log_lines(logfile):
+def last_log_lines(logfile) -> str:
     if not os.path.isfile(logfile):
         return ""
     lastlines = ""
@@ -171,7 +168,7 @@ def last_log_lines(logfile):
     return lastlines
 
 # get last lines of a file (returns empty string if file does not exists or decode fails)
-def get_log_times(logfile):
+def get_log_times(logfile: str) -> str:
     if not os.path.isfile(logfile):
         return ""
     times = ""
@@ -184,7 +181,7 @@ def get_log_times(logfile):
     return times
 
 # check if build as been completed
-def build_is_completed(starttime, uuid, logfile):
+def build_is_completed(starttime, uuid, logfile: str) -> BuildState:
     if build_has_stalled(starttime, uuid, logfile) == True:
         return BuildState.stalled
 
@@ -207,7 +204,7 @@ def build_is_completed(starttime, uuid, logfile):
     return BuildState.started
 
 # find a idling worker
-def find_free_worker(conn, baseimage):
+def find_free_worker(conn) -> int:
     # TODO: make worker amount configurable
     for i in range(1,7):
         c = conn.cursor()
