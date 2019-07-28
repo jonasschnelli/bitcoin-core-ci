@@ -20,7 +20,7 @@ MAX_STALL_TIMEOUT = 300
 GLOBAL_ENV        = "#!/bin/bash\n"
 RUNLOOP_SLEEP     = 3
 
-class BuildStates(IntEnum):
+class BuildState(IntEnum):
     new = 0
     starting = 1
     started = 2
@@ -28,6 +28,10 @@ class BuildStates(IntEnum):
     stalled = 4
     success = 5
     canceled = 6
+
+    def ended(self) -> bool:
+        return True if self in [BuildState.failed, BuildState.stalled, 
+                                BuildState.success, BuildState.canceled] else False
 
 sql_con = sqlite3.connect(os.path.join(DATA_DIR, SQLLITE_DB))
 cur = sql_con.cursor()
@@ -49,7 +53,7 @@ def create_jobs_from_build(conn, row):
 
     #read the build from DB
     cur = sql_con.cursor()
-    cur.execute("UPDATE builds SET state=?, starttime=? WHERE rowid=?", [BuildStates.started, int(time.time()), row['rowid']])
+    cur.execute("UPDATE builds SET state=?, starttime=? WHERE rowid=?", [BuildState.started, int(time.time()), row['rowid']])
     sql_con.commit()
 
     #TODO: change static yml by checking out the GIT one and looking at the override link in the database
@@ -182,10 +186,10 @@ def get_log_times(logfile):
 # check if build as been completed
 def build_is_completed(starttime, uuid, logfile):
     if build_has_stalled(starttime, uuid, logfile) == True:
-        return BuildStates.stalled
+        return BuildState.stalled
 
     if os.path.isfile(logfile) == False:
-        return BuildStates.new
+        return BuildState.new
 
     lastline = ""
     try:
@@ -196,17 +200,11 @@ def build_is_completed(starttime, uuid, logfile):
     if lastline.startswith(pattern):
         retcode = lastline[len(pattern):len(pattern)+1]
         if int(retcode) == 0:
-            return BuildStates.success
+            return BuildState.success
         else:
             # any other non null return code equals fail
-            return BuildStates.failed
-    return BuildStates.started
-
-# check if a build has ended based on the state
-def build_ended(state):
-    if state == BuildStates.failed or state == BuildStates.stalled or state == BuildStates.success or state == BuildStates.canceled:
-        return True
-    return False
+            return BuildState.failed
+    return BuildState.started
 
 # find a idling worker
 def find_free_worker(conn, baseimage):
@@ -270,7 +268,7 @@ def process_jobs(conn):
 
             # make sure we register that we are trying to start the jobs (state "starting")
             cur = sql_con.cursor()
-            cur.execute("UPDATE jobs SET workernr=?, state=?, starttime=? WHERE rowid=?", [workernr, BuildStates.starting, int(time.time()), r['rowid']])
+            cur.execute("UPDATE jobs SET workernr=?, state=?, starttime=? WHERE rowid=?", [workernr, BuildState.starting, int(time.time()), r['rowid']])
             sql_con.commit()
 
             # start the job in thread
@@ -311,8 +309,8 @@ def process_jobs(conn):
             if r['action'] == 1:
                 # cancle build
                 print("canceling job...")
-                state = BuildStates.canceled
-            if build_ended(state):
+                state = BuildState.canceled
+            if state.ended():
                 print("ending build")
                 job_endtime = last_edit(logfile)
                 log_final = os.path.join(LOGSDIR_FINAL, r['uuid']+".log")
@@ -323,7 +321,7 @@ def process_jobs(conn):
                     # file exists, copy logfile
                     os.remove(log_final) # remove symlink
                     os.rename(logfile, log_final)
-                    if state == BuildStates.stalled:
+                    if state == BuildState.stalled:
                         with open(log_final, "a") as myfile:
                             myfile.write("Build has stalled, no output for more then "+str(MAX_STALL_TIMEOUT)+" seconds")
 
@@ -364,14 +362,14 @@ def process_jobs(conn):
                     cur = sql_con.cursor()
                     cur.row_factory = sqlite3.Row
                     cur.execute("SELECT rowid, * FROM jobs WHERE to_build = ?", [r['to_build']])
-                    build_end_state = BuildStates.success
+                    build_end_state = BuildState.success
                     while True:
                         check_rows = cur.fetchmany(1000)
                         if not check_rows: break
                         for cr in check_rows:
-                            if cr['state'] != BuildStates.success:
+                            if cr['state'] != BuildState.success:
                                 # if one job did not succeed, flag overall build as failed
-                                build_end_state = BuildStates.failed
+                                build_end_state = BuildState.failed
                                 break
 
                     #TODO: check if time.time() is acceptable for a build endtime or if we should use the last jobs endtime
@@ -400,7 +398,7 @@ while True:
             if build_start_thread.get_returncode() == 0:
                 print("Updating the database")
                 cur = sql_con.cursor()
-                cur.execute("UPDATE jobs SET state=? WHERE rowid=?", [BuildStates.started, build_start_thread.get_jobid()])
+                cur.execute("UPDATE jobs SET state=? WHERE rowid=?", [BuildState.started, build_start_thread.get_jobid()])
                 sql_con.commit()
             build_threads.remove(build_start_thread)
 
